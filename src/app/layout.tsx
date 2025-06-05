@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster"; // Added for potential future
 
 export const metadata: Metadata = {
   title: 'Game of Life',
-  description: 'Explore Conway\'s Game of Life and other cellular automata.',
+  description: 'Explore the fascinating world of Conway\'s Game of Life. Create, simulate, and discover emergent patterns.',
 };
 
 export default function RootLayout({
