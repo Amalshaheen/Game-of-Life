@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2 } from 'lucide-react';
+import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2, Type } from 'lucide-react'; // Added Type icon
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,9 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, SEED_PATTERNS, type SeedPattern } from '@/lib/game-of-life';
+import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, SEED_PATTERNS, type SeedPattern, renderTextToGrid } from '@/lib/game-of-life'; // Added renderTextToGrid
+import { useToast } from "@/hooks/use-toast";
+
 
 const DEFAULT_ROWS = 40;
 const DEFAULT_COLS = 60;
@@ -32,6 +34,7 @@ export default function CellularAutomataExplorer() {
   const [history, setHistory] = useState<Grid[]>([]);
   const [boundaryCondition, setBoundaryCondition] = useState<BoundaryCondition>('bounded');
   const [selectedSeedName, setSelectedSeedName] = useState<string>('');
+  const [textToSeed, setTextToSeed] = useState<string>('');
   
   const [mounted, setMounted] = useState(false);
   const [actualCellAliveColor, setActualCellAliveColor] = useState('');
@@ -47,8 +50,10 @@ export default function CellularAutomataExplorer() {
 
   const isRunningRef = useRef(isRunning);
   const speedRef = useRef(speed);
-  const gridRef = useRef(grid); // Keep this for read-only access in callbacks if needed
+  const gridRef = useRef(grid); 
   const boundaryConditionRef = useRef(boundaryCondition);
+
+  const { toast } = useToast();
 
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
@@ -104,10 +109,10 @@ export default function CellularAutomataExplorer() {
   }, [drawGrid]);
 
   const runSimulationStep = useCallback(() => {
-    setGrid(currentGrid => { // currentGrid is the latest state
+    setGrid(currentGrid => { 
       const nextGrid = getNextGeneration(currentGrid, boundaryConditionRef.current);
       setHistory(prevHistory => {
-        const updatedHistory = [...prevHistory, currentGrid]; // currentGrid is correct here
+        const updatedHistory = [...prevHistory, currentGrid]; 
         return updatedHistory.length > MAX_HISTORY_SIZE 
           ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
           : updatedHistory;
@@ -149,7 +154,8 @@ export default function CellularAutomataExplorer() {
     setIsRunning(false);
     setGrid(createGrid(gridSize.rows, gridSize.cols, randomize));
     setHistory([]);
-    setSelectedSeedName(''); // Clear selected seed on reset
+    setSelectedSeedName(''); 
+    setTextToSeed('');
   }, [gridSize.rows, gridSize.cols]);
   
   const handleStepBackward = () => {
@@ -162,7 +168,6 @@ export default function CellularAutomataExplorer() {
   const toggleCellAndRecordHistory = useCallback((row: number, col: number) => {
     if (row >= 0 && row < gridSize.rows && col >= 0 && col < gridSize.cols) {
       setHistory(prevHistory => {
-        // Use gridRef.current to ensure the history captures the state *before* the toggle
         const updatedHistory = [...prevHistory, gridRef.current]; 
         return updatedHistory.length > MAX_HISTORY_SIZE 
           ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
@@ -225,7 +230,7 @@ export default function CellularAutomataExplorer() {
   }, []);
 
   useEffect(() => {
-    handleReset(true); // Default to random reset when size changes
+    handleReset(true); 
   }, [gridSize.rows, gridSize.cols, handleReset]);
 
   const handlePlantSeed = useCallback(() => {
@@ -235,15 +240,13 @@ export default function CellularAutomataExplorer() {
     if (!seedToPlant) return;
 
     setIsRunning(false); 
-
     const newGrid = createGrid(gridSize.rows, gridSize.cols, false); 
-
     const patternRows = seedToPlant.pattern.length;
     const patternCols = seedToPlant.pattern[0]?.length || 0;
 
     if (patternRows === 0 || patternCols === 0) return;
     if (patternRows > gridSize.rows || patternCols > gridSize.cols) {
-        alert("Seed pattern is too large for the current grid size.");
+        toast({ title: "Error", description: "Seed pattern is too large for the current grid size.", variant: "destructive" });
         return;
     }
     
@@ -263,7 +266,25 @@ export default function CellularAutomataExplorer() {
     }
     setGrid(newGrid);
     setHistory([]); 
-  }, [selectedSeedName, gridSize.rows, gridSize.cols, setIsRunning, setGrid, setHistory]);
+    setTextToSeed(''); // Clear text input
+  }, [selectedSeedName, gridSize.rows, gridSize.cols, toast]);
+
+  const handlePlantText = useCallback(() => {
+    if (!textToSeed.trim()) {
+        toast({ title: "Info", description: "Please enter some text to seed."});
+        return;
+    }
+    setIsRunning(false);
+    const { grid: newGrid, error } = renderTextToGrid(textToSeed, gridSize.rows, gridSize.cols);
+
+    if (error || !newGrid) {
+        toast({ title: "Error", description: error || "Could not render text.", variant: "destructive" });
+        return;
+    }
+    setGrid(newGrid);
+    setHistory([]);
+    setSelectedSeedName(''); // Clear seed selection
+  }, [textToSeed, gridSize.rows, gridSize.cols, toast]);
 
 
   if (!mounted) {
@@ -387,7 +408,10 @@ export default function CellularAutomataExplorer() {
                 <Label htmlFor="seedSelector">Select Seed</Label>
                 <Select 
                   value={selectedSeedName} 
-                  onValueChange={(value) => setSelectedSeedName(value || '')}
+                  onValueChange={(value) => {
+                    setSelectedSeedName(value || '');
+                    if(value) setTextToSeed(''); // Clear text input if seed selected
+                  }}
                 >
                   <SelectTrigger id="seedSelector" aria-label="Select Seed Structure">
                     <SelectValue placeholder="Select a structure..." />
@@ -415,6 +439,35 @@ export default function CellularAutomataExplorer() {
               </Button>
             </CardContent>
           </Card>
+
+          <Separator />
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="flex items-center"><Type className="mr-2 h-5 w-5" />Seed Text</CardTitle>
+              <CardDescription>Plant text onto the grid.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="textSeeder">Enter Text</Label>
+                <Input 
+                  id="textSeeder" 
+                  type="text" 
+                  placeholder="e.g., HELLO" 
+                  value={textToSeed}
+                  onChange={(e) => {
+                     setTextToSeed(e.target.value);
+                     if(e.target.value) setSelectedSeedName(''); // Clear seed selection if text entered
+                  }}
+                  maxLength={20} // Prevent overly long strings
+                />
+              </div>
+              <Button onClick={handlePlantText} disabled={!textToSeed.trim()} className="w-full">
+                Plant Text
+              </Button>
+            </CardContent>
+          </Card>
+
 
           <CardDescription className="text-center text-xs">
             Click and drag on cells to toggle their state. Use controls to manage the simulation.
