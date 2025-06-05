@@ -2,22 +2,24 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2, Type, Save } from 'lucide-react'; // Added Save Icon
+import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2, Type, Save, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'; // Added SelectGroup, SelectLabel
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, PREDEFINED_SEED_PATTERNS, type SeedPattern, renderTextToGrid, extractPatternFromGrid } from '@/lib/game-of-life'; // Updated PREDEFINED_SEED_PATTERNS, added extractPatternFromGrid
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle, SheetDescription as SheetCardDescription } from '@/components/ui/sheet';
+import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, PREDEFINED_SEED_PATTERNS, type SeedPattern, renderTextToGrid, extractPatternFromGrid } from '@/lib/game-of-life';
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from '@/hooks/use-mobile';
 
-
+const DESKTOP_CELL_SIZE = 12;
+const MOBILE_CELL_SIZE = 8;
 const DEFAULT_ROWS = 40;
 const DEFAULT_COLS = 60;
-const CELL_SIZE = 12; 
 const DEFAULT_SPEED_MS = 150;
 const MAX_HISTORY_SIZE = 100;
 const CUSTOM_SEEDS_STORAGE_KEY = 'gameOfLifeCustomSeeds';
@@ -57,6 +59,13 @@ export default function CellularAutomataExplorer() {
   const boundaryConditionRef = useRef(boundaryCondition);
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [currentCellSize, setCurrentCellSize] = useState(DESKTOP_CELL_SIZE);
+
+  useEffect(() => {
+    setCurrentCellSize(isMobile ? MOBILE_CELL_SIZE : DESKTOP_CELL_SIZE);
+  }, [isMobile]);
 
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
@@ -75,7 +84,6 @@ export default function CellularAutomataExplorer() {
       if (mutedColorValue) setActualCellDeadColor(`hsl(${mutedColorValue})`);
       if (borderColorValue) setActualGridLineColor(`hsla(${borderColorValue}, 0.4)`);
 
-      // Load custom seeds from localStorage
       try {
         const storedSeeds = localStorage.getItem(CUSTOM_SEEDS_STORAGE_KEY);
         if (storedSeeds) {
@@ -100,7 +108,7 @@ export default function CellularAutomataExplorer() {
     for (let row = 0; row < gridSize.rows; row++) {
       for (let col = 0; col < gridSize.cols; col++) {
         ctx.fillStyle = grid[row] && grid[row][col] ? actualCellAliveColor : actualCellDeadColor;
-        ctx.fillRect(col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        ctx.fillRect(col * currentCellSize, row * currentCellSize, currentCellSize, currentCellSize);
       }
     }
 
@@ -108,19 +116,24 @@ export default function CellularAutomataExplorer() {
     ctx.lineWidth = 0.5;
     ctx.beginPath();
     for (let i = 0; i <= gridSize.cols; i++) {
-      ctx.moveTo(i * CELL_SIZE, 0);
-      ctx.lineTo(i * CELL_SIZE, gridSize.rows * CELL_SIZE);
+      ctx.moveTo(i * currentCellSize, 0);
+      ctx.lineTo(i * currentCellSize, gridSize.rows * currentCellSize);
     }
     for (let j = 0; j <= gridSize.rows; j++) {
-      ctx.moveTo(0, j * CELL_SIZE);
-      ctx.lineTo(gridSize.cols * CELL_SIZE, j * CELL_SIZE);
+      ctx.moveTo(0, j * currentCellSize);
+      ctx.lineTo(gridSize.cols * currentCellSize, j * currentCellSize);
     }
     ctx.stroke();
-  }, [grid, gridSize, mounted, actualCellAliveColor, actualCellDeadColor, actualGridLineColor]);
+  }, [grid, gridSize, mounted, actualCellAliveColor, actualCellDeadColor, actualGridLineColor, currentCellSize]);
 
   useEffect(() => {
+    if (canvasRef.current) {
+      canvasRef.current.width = gridSize.cols * currentCellSize;
+      canvasRef.current.height = gridSize.rows * currentCellSize;
+    }
     drawGrid();
-  }, [drawGrid]);
+  }, [gridSize, currentCellSize, drawGrid]);
+
 
   const runSimulationStep = useCallback(() => {
     setGrid(currentGrid => { 
@@ -203,12 +216,12 @@ export default function CellularAutomataExplorer() {
     const rect = canvasRef.current.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const col = Math.floor(x / CELL_SIZE);
-    const row = Math.floor(y / CELL_SIZE);
+    const col = Math.floor(x / currentCellSize);
+    const row = Math.floor(y / currentCellSize);
 
     toggleCellAndRecordHistory(row, col);
     lastPaintedCellRef.current = { row, col };
-  }, [handlePause, toggleCellAndRecordHistory]);
+  }, [handlePause, toggleCellAndRecordHistory, currentCellSize]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isPainting || !canvasRef.current) return;
@@ -216,8 +229,8 @@ export default function CellularAutomataExplorer() {
     const rect = canvasRef.current.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    const col = Math.floor(x / CELL_SIZE);
-    const row = Math.floor(y / CELL_SIZE);
+    const col = Math.floor(x / currentCellSize);
+    const row = Math.floor(y / currentCellSize);
 
     if (lastPaintedCellRef.current && lastPaintedCellRef.current.row === row && lastPaintedCellRef.current.col === col) {
       return; 
@@ -225,7 +238,7 @@ export default function CellularAutomataExplorer() {
     
     toggleCellAndRecordHistory(row, col);
     lastPaintedCellRef.current = { row, col };
-  }, [isPainting, toggleCellAndRecordHistory]);
+  }, [isPainting, toggleCellAndRecordHistory, currentCellSize]);
 
   const handleMouseUp = useCallback(() => {
     setIsPainting(false);
@@ -286,7 +299,8 @@ export default function CellularAutomataExplorer() {
     setGrid(newGrid);
     setHistory([]); 
     setTextToSeed(''); 
-  }, [selectedSeedName, gridSize.rows, gridSize.cols, toast, customSeedPatterns]);
+    if (isMobile) setIsSheetOpen(false);
+  }, [selectedSeedName, gridSize.rows, gridSize.cols, toast, customSeedPatterns, isMobile]);
 
   const handlePlantText = useCallback(() => {
     if (!textToSeed.trim()) {
@@ -303,7 +317,8 @@ export default function CellularAutomataExplorer() {
     setGrid(newGrid);
     setHistory([]);
     setSelectedSeedName(''); 
-  }, [textToSeed, gridSize.rows, gridSize.cols, toast]);
+    if (isMobile) setIsSheetOpen(false);
+  }, [textToSeed, gridSize.rows, gridSize.cols, toast, isMobile]);
 
   const handleSaveCustomSeed = useCallback(() => {
     const name = customSeedNameInput.trim();
@@ -338,8 +353,9 @@ export default function CellularAutomataExplorer() {
       }
       return updatedSeeds;
     });
-    setCustomSeedNameInput(''); 
-  }, [customSeedNameInput, toast]);
+    setCustomSeedNameInput('');
+    if (isMobile) setIsSheetOpen(false);
+  }, [customSeedNameInput, toast, isMobile]);
 
 
   if (!mounted) {
@@ -348,15 +364,259 @@ export default function CellularAutomataExplorer() {
   
   const combinedSeedPatterns = [...PREDEFINED_SEED_PATTERNS, ...customSeedPatterns];
 
+  const controlsPanelContent = (
+    <>
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center"><Settings2 className="mr-2 h-5 w-5" />Controls</CardTitle>
+          <CardDescription>Manage the simulation.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-3">
+          {!isMobile ? (
+            <>
+              <Button onClick={handleStart} disabled={isRunning} className="w-full">
+                <Play className="mr-2 h-4 w-4" /> Start
+              </Button>
+              <Button onClick={handlePause} disabled={!isRunning} className="w-full">
+                <Pause className="mr-2 h-4 w-4" /> Pause
+              </Button>
+            </>
+          ) : (
+            <p className="col-span-2 text-center text-sm text-muted-foreground">
+              Use FAB to Start/Pause
+            </p>
+          )}
+          <Button onClick={handleStepForward} disabled={isRunning} className="w-full">
+            <SkipForward className="mr-2 h-4 w-4" /> Step
+          </Button
+            >
+          <Button onClick={handleStepBackward} disabled={isRunning || history.length === 0} className="w-full">
+            <SkipBack className="mr-2 h-4 w-4" /> Back
+          </Button>
+          <Button onClick={() => handleReset(true)} variant="outline" className="col-span-2 w-full">
+            <RefreshCw className="mr-2 h-4 w-4" /> Random Reset
+          </Button>
+           <Button onClick={() => handleReset(false)} variant="outline" className="col-span-2 w-full">
+            <Wand2 className="mr-2 h-4 w-4" /> Clear Grid
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center"><Zap className="mr-2 h-5 w-5" />Parameters</CardTitle>
+          <CardDescription>Adjust simulation settings.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="rows" className="flex items-center"><Rows className="mr-2 h-4 w-4" />Rows ({gridSize.rows})</Label>
+            <Slider
+              id="rows"
+              min={10} max={100} step={1}
+              defaultValue={[gridSize.rows]}
+              onValueChange={(value) => handleGridSizeChange(value[0], gridSize.cols)}
+              aria-label="Grid Rows"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="cols" className="flex items-center"><ColumnsIcon className="mr-2 h-4 w-4" />Columns ({gridSize.cols})</Label>
+             <Slider
+              id="cols"
+              min={10} max={100} step={1}
+              defaultValue={[gridSize.cols]}
+              onValueChange={(value) => handleGridSizeChange(gridSize.rows, value[0])}
+              aria-label="Grid Columns"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="speed">Speed ({speed}ms / step)</Label>
+            <Slider
+              id="speed"
+              min={50} max={1000} step={50}
+              defaultValue={[speed]}
+              onValueChange={(value) => setSpeed(value[0])}
+              aria-label="Simulation Speed"
+            />
+             <div className="flex justify-between text-xs text-muted-foreground">
+              <span>Fast</span>
+              <span>Slow</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="boundaryType" className="flex items-center"><Globe className="mr-2 h-4 w-4" />Boundary Type</Label>
+            <Select 
+              value={boundaryCondition} 
+              onValueChange={(value: BoundaryCondition) => setBoundaryCondition(value)}
+            >
+              <SelectTrigger id="boundaryType" aria-label="Boundary Type">
+                <SelectValue placeholder="Select boundary type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bounded">Bounded</SelectItem>
+                <SelectItem value="circular">Circular (Periodic)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+      
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center"><PackageIcon className="mr-2 h-5 w-5" />Seed Structures</CardTitle>
+          <CardDescription>Start with a predefined or custom pattern.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="seedSelector">Select Seed</Label>
+            <Select 
+              value={selectedSeedName} 
+              onValueChange={(value) => {
+                setSelectedSeedName(value || '');
+                if(value) setTextToSeed(''); 
+              }}
+            >
+              <SelectTrigger id="seedSelector" aria-label="Select Seed Structure">
+                <SelectValue placeholder="Select a structure..." />
+              </SelectTrigger>
+              <SelectContent>
+                {PREDEFINED_SEED_PATTERNS.length > 0 && (
+                    <SelectGroup>
+                        <SelectLabel>Predefined</SelectLabel>
+                        {PREDEFINED_SEED_PATTERNS.map(seed => (
+                        <SelectItem key={`predefined-${seed.name}`} value={seed.name} title={seed.description}>
+                            <Tooltip>
+                            <TooltipTrigger asChild>
+                                <span>{seed.name}</span>
+                            </TooltipTrigger>
+                            {seed.description && (
+                                <TooltipContent side="right" align="start">
+                                <p>{seed.description}</p>
+                                </TooltipContent>
+                            )}
+                            </Tooltip>
+                        </SelectItem>
+                        ))}
+                    </SelectGroup>
+                )}
+                {customSeedPatterns.length > 0 && (
+                    <SelectGroup>
+                        <SelectLabel>Custom</SelectLabel>
+                        {customSeedPatterns.map(seed => (
+                        <SelectItem key={`custom-${seed.name}`} value={seed.name} title={seed.description || `Custom pattern: ${seed.name}`}>
+                             <Tooltip>
+                            <TooltipTrigger asChild>
+                                <span>{seed.name}</span>
+                            </TooltipTrigger>
+                            {(seed.description || `Custom pattern: ${seed.name}`) && (
+                                <TooltipContent side="right" align="start">
+                                <p>{seed.description || `Custom pattern: ${seed.name}`}</p>
+                                </TooltipContent>
+                            )}
+                            </Tooltip>
+                        </SelectItem>
+                        ))}
+                    </SelectGroup>
+                )}
+                {PREDEFINED_SEED_PATTERNS.length === 0 && customSeedPatterns.length === 0 && (
+                    <SelectItem value="none_available" disabled>No patterns available</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button onClick={handlePlantSeed} disabled={!selectedSeedName} className="w-full">
+            Plant Selected Seed
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center"><Type className="mr-2 h-5 w-5" />Seed Text</CardTitle>
+          <CardDescription>Plant text onto the grid.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="textSeeder">Enter Text</Label>
+            <Input 
+              id="textSeeder" 
+              type="text" 
+              placeholder="e.g., HELLO" 
+              value={textToSeed}
+              onChange={(e) => {
+                 setTextToSeed(e.target.value);
+                 if(e.target.value) setSelectedSeedName(''); 
+              }}
+              maxLength={20} 
+            />
+          </div>
+          <Button onClick={handlePlantText} disabled={!textToSeed.trim()} className="w-full">
+            Plant Text
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      <Card className="overflow-hidden">
+        <CardHeader>
+            <CardTitle className="flex items-center"><Save className="mr-2 h-5 w-5" />Save Current Pattern</CardTitle>
+            <CardDescription>Save the current grid as a new custom seed.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="space-y-2">
+                <Label htmlFor="customSeedName">Pattern Name</Label>
+                <Input 
+                    id="customSeedName" 
+                    type="text" 
+                    placeholder="My Awesome Pattern" 
+                    value={customSeedNameInput}
+                    onChange={(e) => setCustomSeedNameInput(e.target.value)}
+                    maxLength={50}
+                />
+            </div>
+            <Button onClick={handleSaveCustomSeed} disabled={!customSeedNameInput.trim()} className="w-full">
+                Save Pattern
+            </Button>
+        </CardContent>
+      </Card>
+    </>
+  );
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col md:flex-row h-full w-full p-4 gap-4">
-        <main className="flex-1 flex flex-col items-center justify-center bg-card p-4 rounded-lg shadow-lg overflow-hidden">
+      <div className={`flex ${isMobile ? 'flex-col' : 'md:flex-row'} h-full w-full p-4 gap-4`}>
+        {isMobile && (
+          <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="icon" className="fixed top-20 left-4 z-30 h-12 w-12 rounded-full shadow-lg md:hidden">
+                <Menu className="h-6 w-6" />
+                <span className="sr-only">Open Controls</span>
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[300px] sm:w-[350px] p-0 flex flex-col">
+                <SheetHeader className="p-4 border-b">
+                    <SheetTitle>Controls & Settings</SheetTitle>
+                    <SheetCardDescription>Adjust simulation parameters and load/save patterns.</SheetCardDescription>
+                </SheetHeader>
+                <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                    {controlsPanelContent}
+                </div>
+                 <SheetCardDescription className="text-center text-xs p-4 border-t">
+                    Click/drag cells. Max history: {MAX_HISTORY_SIZE}.
+                </SheetCardDescription>
+            </SheetContent>
+          </Sheet>
+        )}
+
+        <main className={`flex-1 flex flex-col items-center justify-center bg-card p-4 rounded-lg shadow-lg overflow-hidden ${isMobile ? 'mt-0' : ''}`}>
           <canvas
             ref={canvasRef}
-            width={gridSize.cols * CELL_SIZE}
-            height={gridSize.rows * CELL_SIZE}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
@@ -366,223 +626,26 @@ export default function CellularAutomataExplorer() {
           />
         </main>
 
-        <aside className="w-full md:w-80 lg:w-96 bg-card p-6 rounded-lg shadow-lg space-y-6 overflow-y-auto">
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center"><Settings2 className="mr-2 h-5 w-5" />Controls</CardTitle>
-              <CardDescription>Manage the simulation.</CardDescription>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-3">
-              <Button onClick={handleStart} disabled={isRunning} className="w-full">
-                <Play className="mr-2 h-4 w-4" /> Start
-              </Button>
-              <Button onClick={handlePause} disabled={!isRunning} className="w-full">
-                <Pause className="mr-2 h-4 w-4" /> Pause
-              </Button>
-              <Button onClick={handleStepForward} disabled={isRunning} className="w-full">
-                <SkipForward className="mr-2 h-4 w-4" /> Step
-              </Button>
-              <Button onClick={handleStepBackward} disabled={isRunning || history.length === 0} className="w-full">
-                <SkipBack className="mr-2 h-4 w-4" /> Back
-              </Button>
-              <Button onClick={() => handleReset(true)} variant="outline" className="col-span-2 w-full">
-                <RefreshCw className="mr-2 h-4 w-4" /> Random Reset
-              </Button>
-               <Button onClick={() => handleReset(false)} variant="outline" className="col-span-2 w-full">
-                <Wand2 className="mr-2 h-4 w-4" /> Clear Grid
-              </Button>
-            </CardContent>
-          </Card>
+        {!isMobile && (
+          <aside className="w-full md:w-80 lg:w-96 bg-card p-6 rounded-lg shadow-lg space-y-6 overflow-y-auto">
+            {controlsPanelContent}
+             <CardDescription className="text-center text-xs">
+                Click and drag on cells to toggle their state. Use controls to manage the simulation.
+                Max history: {MAX_HISTORY_SIZE} steps.
+             </CardDescription>
+          </aside>
+        )}
 
-          <Separator />
-
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center"><Zap className="mr-2 h-5 w-5" />Parameters</CardTitle>
-              <CardDescription>Adjust simulation settings.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="rows" className="flex items-center"><Rows className="mr-2 h-4 w-4" />Rows ({gridSize.rows})</Label>
-                <Slider
-                  id="rows"
-                  min={10} max={100} step={1}
-                  defaultValue={[gridSize.rows]}
-                  onValueChange={(value) => handleGridSizeChange(value[0], gridSize.cols)}
-                  aria-label="Grid Rows"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="cols" className="flex items-center"><ColumnsIcon className="mr-2 h-4 w-4" />Columns ({gridSize.cols})</Label>
-                 <Slider
-                  id="cols"
-                  min={10} max={100} step={1}
-                  defaultValue={[gridSize.cols]}
-                  onValueChange={(value) => handleGridSizeChange(gridSize.rows, value[0])}
-                  aria-label="Grid Columns"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="speed">Speed ({speed}ms / step)</Label>
-                <Slider
-                  id="speed"
-                  min={50} max={1000} step={50}
-                  defaultValue={[speed]}
-                  onValueChange={(value) => setSpeed(value[0])}
-                  aria-label="Simulation Speed"
-                />
-                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Fast</span>
-                  <span>Slow</span>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="boundaryType" className="flex items-center"><Globe className="mr-2 h-4 w-4" />Boundary Type</Label>
-                <Select 
-                  value={boundaryCondition} 
-                  onValueChange={(value: BoundaryCondition) => setBoundaryCondition(value)}
-                >
-                  <SelectTrigger id="boundaryType" aria-label="Boundary Type">
-                    <SelectValue placeholder="Select boundary type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bounded">Bounded</SelectItem>
-                    <SelectItem value="circular">Circular (Periodic)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Separator />
-          
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center"><PackageIcon className="mr-2 h-5 w-5" />Seed Structures</CardTitle>
-              <CardDescription>Start with a predefined or custom pattern.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="seedSelector">Select Seed</Label>
-                <Select 
-                  value={selectedSeedName} 
-                  onValueChange={(value) => {
-                    setSelectedSeedName(value || '');
-                    if(value) setTextToSeed(''); 
-                  }}
-                >
-                  <SelectTrigger id="seedSelector" aria-label="Select Seed Structure">
-                    <SelectValue placeholder="Select a structure..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PREDEFINED_SEED_PATTERNS.length > 0 && (
-                        <SelectGroup>
-                            <SelectLabel>Predefined</SelectLabel>
-                            {PREDEFINED_SEED_PATTERNS.map(seed => (
-                            <SelectItem key={`predefined-${seed.name}`} value={seed.name} title={seed.description}>
-                                <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <span>{seed.name}</span>
-                                </TooltipTrigger>
-                                {seed.description && (
-                                    <TooltipContent side="right" align="start">
-                                    <p>{seed.description}</p>
-                                    </TooltipContent>
-                                )}
-                                </Tooltip>
-                            </SelectItem>
-                            ))}
-                        </SelectGroup>
-                    )}
-                    {customSeedPatterns.length > 0 && (
-                        <SelectGroup>
-                            <SelectLabel>Custom</SelectLabel>
-                            {customSeedPatterns.map(seed => (
-                            <SelectItem key={`custom-${seed.name}`} value={seed.name} title={seed.description || `Custom pattern: ${seed.name}`}>
-                                 <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <span>{seed.name}</span>
-                                </TooltipTrigger>
-                                {(seed.description || `Custom pattern: ${seed.name}`) && (
-                                    <TooltipContent side="right" align="start">
-                                    <p>{seed.description || `Custom pattern: ${seed.name}`}</p>
-                                    </TooltipContent>
-                                )}
-                                </Tooltip>
-                            </SelectItem>
-                            ))}
-                        </SelectGroup>
-                    )}
-                    {PREDEFINED_SEED_PATTERNS.length === 0 && customSeedPatterns.length === 0 && (
-                        <SelectItem value="none_available" disabled>No patterns available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handlePlantSeed} disabled={!selectedSeedName} className="w-full">
-                Plant Selected Seed
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Separator />
-
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle className="flex items-center"><Type className="mr-2 h-5 w-5" />Seed Text</CardTitle>
-              <CardDescription>Plant text onto the grid.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="textSeeder">Enter Text</Label>
-                <Input 
-                  id="textSeeder" 
-                  type="text" 
-                  placeholder="e.g., HELLO" 
-                  value={textToSeed}
-                  onChange={(e) => {
-                     setTextToSeed(e.target.value);
-                     if(e.target.value) setSelectedSeedName(''); 
-                  }}
-                  maxLength={20} 
-                />
-              </div>
-              <Button onClick={handlePlantText} disabled={!textToSeed.trim()} className="w-full">
-                Plant Text
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Separator />
-
-          <Card className="overflow-hidden">
-            <CardHeader>
-                <CardTitle className="flex items-center"><Save className="mr-2 h-5 w-5" />Save Current Pattern</CardTitle>
-                <CardDescription>Save the current grid as a new custom seed.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="space-y-2">
-                    <Label htmlFor="customSeedName">Pattern Name</Label>
-                    <Input 
-                        id="customSeedName" 
-                        type="text" 
-                        placeholder="My Awesome Pattern" 
-                        value={customSeedNameInput}
-                        onChange={(e) => setCustomSeedNameInput(e.target.value)}
-                        maxLength={50}
-                    />
-                </div>
-                <Button onClick={handleSaveCustomSeed} disabled={!customSeedNameInput.trim()} className="w-full">
-                    Save Pattern
-                </Button>
-            </CardContent>
-          </Card>
-
-          <CardDescription className="text-center text-xs">
-            Click and drag on cells to toggle their state. Use controls to manage the simulation.
-            Max history: {MAX_HISTORY_SIZE} steps.
-          </CardDescription>
-        </aside>
+        {isMobile && (
+          <Button
+            onClick={isRunning ? handlePause : handleStart}
+            className="fixed bottom-6 right-6 z-30 h-16 w-16 rounded-full shadow-xl flex items-center justify-center"
+            size="icon"
+            aria-label={isRunning ? "Pause simulation" : "Start simulation"}
+          >
+            {isRunning ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
+          </Button>
+        )}
       </div>
     </TooltipProvider>
   );
