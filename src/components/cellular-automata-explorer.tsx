@@ -36,15 +36,16 @@ export default function CellularAutomataExplorer() {
   const [actualCellDeadColor, setActualCellDeadColor] = useState('');
   const [actualGridLineColor, setActualGridLineColor] = useState('');
 
+  const [isPainting, setIsPainting] = useState(false);
+  const lastPaintedCellRef = useRef<{row: number, col: number} | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameIdRef = useRef<number | null>(null);
   const timeoutIdRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Refs for simulation loop to access latest state without re-creating callback
   const isRunningRef = useRef(isRunning);
   const speedRef = useRef(speed);
-  const gridRef = useRef(grid); // To access current grid in callbacks for history
+  const gridRef = useRef(grid);
 
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
@@ -60,7 +61,7 @@ export default function CellularAutomataExplorer() {
 
       if (accentColorValue) setActualCellAliveColor(`hsl(${accentColorValue})`);
       if (mutedColorValue) setActualCellDeadColor(`hsl(${mutedColorValue})`);
-      if (borderColorValue) setActualGridLineColor(`hsla(${borderColorValue}, 0.4)`); // Added alpha for subtlety
+      if (borderColorValue) setActualGridLineColor(`hsla(${borderColorValue}, 0.4)`);
     }
   }, []);
 
@@ -73,7 +74,6 @@ export default function CellularAutomataExplorer() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw cells
     for (let row = 0; row < gridSize.rows; row++) {
       for (let col = 0; col < gridSize.cols; col++) {
         ctx.fillStyle = grid[row] && grid[row][col] ? actualCellAliveColor : actualCellDeadColor;
@@ -81,7 +81,6 @@ export default function CellularAutomataExplorer() {
       }
     }
 
-    // Draw grid lines
     ctx.strokeStyle = actualGridLineColor;
     ctx.beginPath();
     for (let i = 0; i <= gridSize.cols; i++) {
@@ -134,18 +133,18 @@ export default function CellularAutomataExplorer() {
   }, [isRunning, simulationLoop]);
 
   const handleStart = () => setIsRunning(true);
-  const handlePause = () => setIsRunning(false);
+  const handlePause = useCallback(() => setIsRunning(false), [setIsRunning]);
 
   const handleStepForward = () => {
     if (isRunning) return;
     runSimulationStep();
   };
 
-  const handleReset = (randomize = true) => {
+  const handleReset = useCallback((randomize = true) => {
     setIsRunning(false);
     setGrid(createGrid(gridSize.rows, gridSize.cols, randomize));
     setHistory([]);
-  };
+  }, [gridSize.rows, gridSize.cols]);
   
   const handleStepBackward = () => {
     if (isRunning || history.length === 0) return;
@@ -153,10 +152,40 @@ export default function CellularAutomataExplorer() {
     setGrid(lastState);
     setHistory(prevHistory => prevHistory.slice(0, -1));
   };
+  
+  const toggleCellAndRecordHistory = useCallback((row: number, col: number) => {
+    if (row >= 0 && row < gridSize.rows && col >= 0 && col < gridSize.cols) {
+      setHistory(prevHistory => {
+        const updatedHistory = [...prevHistory, gridRef.current]; // gridRef.current is state BEFORE this toggle
+        return updatedHistory.length > MAX_HISTORY_SIZE 
+          ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
+          : updatedHistory;
+      });
+      setGrid(prevGrid => {
+        const newGrid = prevGrid.map(arr => arr.slice()); // Deep copy
+        newGrid[row][col] = newGrid[row][col] ? 0 : 1;
+        return newGrid;
+      });
+    }
+  }, [gridSize.rows, gridSize.cols, setHistory, setGrid, gridRef]);
 
-  const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
-    if (isRunning) handlePause(); // Pause simulation when user interacts
+    if (isRunningRef.current) handlePause(); 
+
+    setIsPainting(true);
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    const col = Math.floor(x / CELL_SIZE);
+    const row = Math.floor(y / CELL_SIZE);
+
+    toggleCellAndRecordHistory(row, col);
+    lastPaintedCellRef.current = { row, col };
+  }, [handlePause, toggleCellAndRecordHistory, setIsPainting, lastPaintedCellRef]);
+
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isPainting || !canvasRef.current) return;
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -164,21 +193,25 @@ export default function CellularAutomataExplorer() {
     const col = Math.floor(x / CELL_SIZE);
     const row = Math.floor(y / CELL_SIZE);
 
-    if (row >= 0 && row < gridSize.rows && col >= 0 && col < gridSize.cols) {
-      setGrid(prevGrid => {
-        const newGrid = prevGrid.map(arr => arr.slice()); // Deep copy
-        newGrid[row][col] = newGrid[row][col] ? 0 : 1;
-        return newGrid;
-      });
-       // Add current grid state to history before modification by click
-      setHistory(prevHistory => {
-        const updatedHistory = [...prevHistory, gridRef.current]; // gridRef.current is the state *before* the click toggle
-        return updatedHistory.length > MAX_HISTORY_SIZE 
-          ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
-          : updatedHistory;
-      });
+    if (lastPaintedCellRef.current && lastPaintedCellRef.current.row === row && lastPaintedCellRef.current.col === col) {
+      return; 
     }
-  };
+    
+    toggleCellAndRecordHistory(row, col);
+    lastPaintedCellRef.current = { row, col };
+  }, [isPainting, toggleCellAndRecordHistory, lastPaintedCellRef]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsPainting(false);
+    lastPaintedCellRef.current = null;
+  }, [setIsPainting, lastPaintedCellRef]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (isPainting) {
+      setIsPainting(false);
+      lastPaintedCellRef.current = null;
+    }
+  }, [isPainting, setIsPainting, lastPaintedCellRef]);
   
   const handleGridSizeChange = useCallback((newRows: number, newCols: number) => {
     setGridSize({ rows: newRows, cols: newCols });
@@ -186,10 +219,9 @@ export default function CellularAutomataExplorer() {
   }, []);
 
   useEffect(() => {
-    // Reset and randomize grid when size changes
     handleReset(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gridSize.rows, gridSize.cols]);
+  }, [gridSize.rows, gridSize.cols]); // handleReset is memoized
 
 
   if (!mounted) {
@@ -204,7 +236,10 @@ export default function CellularAutomataExplorer() {
             ref={canvasRef}
             width={gridSize.cols * CELL_SIZE}
             height={gridSize.rows * CELL_SIZE}
-            onClick={handleCanvasClick}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
             className="border border-border cursor-pointer shadow-inner"
             aria-label="Game of Life Grid"
           />
@@ -283,7 +318,7 @@ export default function CellularAutomataExplorer() {
             </CardContent>
           </Card>
           <CardDescription className="text-center text-xs">
-            Click on cells to toggle their state. Use controls to manage the simulation.
+            Click and drag on cells to toggle their state. Use controls to manage the simulation.
             Max history: {MAX_HISTORY_SIZE} steps.
           </CardDescription>
         </aside>
@@ -291,3 +326,5 @@ export default function CellularAutomataExplorer() {
     </TooltipProvider>
   );
 }
+
+    
