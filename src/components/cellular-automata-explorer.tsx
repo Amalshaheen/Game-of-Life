@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -17,9 +18,10 @@ const CELL_SIZE = 12; // px
 const DEFAULT_SPEED_MS = 150;
 const MAX_HISTORY_SIZE = 100;
 
-const CELL_ALIVE_COLOR_VAR = "hsl(var(--accent))";
-const CELL_DEAD_COLOR_VAR = "hsl(var(--muted))";
-const GRID_LINE_COLOR_VAR = "hsl(var(--border))";
+// CSS variable names (without hsl() wrapper)
+const CSS_VAR_ACCENT = '--accent';
+const CSS_VAR_MUTED = '--muted';
+const CSS_VAR_BORDER = '--border';
 
 
 export default function CellularAutomataExplorer() {
@@ -50,18 +52,21 @@ export default function CellularAutomataExplorer() {
   
   useEffect(() => {
     setMounted(true);
-    // Dynamically get CSS variable values on client
     if (typeof window !== 'undefined') {
       const computedStyle = getComputedStyle(document.documentElement);
-      setActualCellAliveColor(computedStyle.getPropertyValue('--accent').trim());
-      setActualCellDeadColor(computedStyle.getPropertyValue('--muted').trim());
-      setActualGridLineColor(computedStyle.getPropertyValue('--border').trim());
+      const accentColorValue = computedStyle.getPropertyValue(CSS_VAR_ACCENT).trim();
+      const mutedColorValue = computedStyle.getPropertyValue(CSS_VAR_MUTED).trim();
+      const borderColorValue = computedStyle.getPropertyValue(CSS_VAR_BORDER).trim();
+
+      if (accentColorValue) setActualCellAliveColor(`hsl(${accentColorValue})`);
+      if (mutedColorValue) setActualCellDeadColor(`hsl(${mutedColorValue})`);
+      if (borderColorValue) setActualGridLineColor(`hsla(${borderColorValue}, 0.4)`); // Added alpha for subtlety
     }
   }, []);
 
 
   const drawGrid = useCallback(() => {
-    if (!canvasRef.current || !mounted) return;
+    if (!canvasRef.current || !mounted || !actualCellAliveColor || !actualCellDeadColor || !actualGridLineColor) return;
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -151,7 +156,7 @@ export default function CellularAutomataExplorer() {
 
   const handleCanvasClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
-    if (isRunning) handlePause();
+    if (isRunning) handlePause(); // Pause simulation when user interacts
 
     const rect = canvasRef.current.getBoundingClientRect();
     const x = event.clientX - rect.left;
@@ -165,13 +170,25 @@ export default function CellularAutomataExplorer() {
         newGrid[row][col] = newGrid[row][col] ? 0 : 1;
         return newGrid;
       });
-      // Painting modifies the current state, new history will build from here
-      // For simplicity, we don't clear history here, it acts as an "edit"
+       // Add current grid state to history before modification by click
+      setHistory(prevHistory => {
+        const updatedHistory = [...prevHistory, gridRef.current]; // gridRef.current is the state *before* the click toggle
+        return updatedHistory.length > MAX_HISTORY_SIZE 
+          ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
+          : updatedHistory;
+      });
     }
   };
+  
+  const handleGridSizeChange = useCallback((newRows: number, newCols: number) => {
+    setGridSize({ rows: newRows, cols: newCols });
+    // handleReset will be called by the useEffect watching gridSize
+  }, []);
 
   useEffect(() => {
-    handleReset(true); // Initialize with a random grid on size change
+    // Reset and randomize grid when size changes
+    handleReset(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gridSize.rows, gridSize.cols]);
 
 
@@ -235,7 +252,7 @@ export default function CellularAutomataExplorer() {
                   id="rows"
                   min={10} max={100} step={1}
                   defaultValue={[gridSize.rows]}
-                  onValueChange={(value) => setGridSize(s => ({ ...s, rows: value[0] }))}
+                  onValueChange={(value) => handleGridSizeChange(value[0], gridSize.cols)}
                   aria-label="Grid Rows"
                 />
               </div>
@@ -245,7 +262,7 @@ export default function CellularAutomataExplorer() {
                   id="cols"
                   min={10} max={100} step={1}
                   defaultValue={[gridSize.cols]}
-                  onValueChange={(value) => setGridSize(s => ({ ...s, cols: value[0] }))}
+                  onValueChange={(value) => handleGridSizeChange(gridSize.rows, value[0])}
                   aria-label="Grid Columns"
                 />
               </div>

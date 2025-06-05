@@ -1,3 +1,4 @@
+
 export type Grid = number[][];
 
 export const createGrid = (rows: number, cols: number, randomize: boolean = false): Grid => {
@@ -6,7 +7,7 @@ export const createGrid = (rows: number, cols: number, randomize: boolean = fals
     grid[i] = [];
     for (let j = 0; j < cols; j++) {
       if (randomize) {
-        grid[i][j] = Math.random() > 0.75 ? 1 : 0; // Adjust randomization factor for sparser initial grids
+        grid[i][j] = Math.random() > 0.6 ? 1 : 0; // Increased density for random grids
       } else {
         grid[i][j] = 0;
       }
