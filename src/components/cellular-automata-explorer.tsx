@@ -2,15 +2,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon } from 'lucide-react';
+import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { type Grid, createGrid, getNextGeneration } from '@/lib/game-of-life';
+import { type Grid, createGrid, getNextGeneration, type BoundaryCondition } from '@/lib/game-of-life';
 
 const DEFAULT_ROWS = 40;
 const DEFAULT_COLS = 60;
@@ -30,6 +31,7 @@ export default function CellularAutomataExplorer() {
   const [isRunning, setIsRunning] = useState(false);
   const [speed, setSpeed] = useState(DEFAULT_SPEED_MS);
   const [history, setHistory] = useState<Grid[]>([]);
+  const [boundaryCondition, setBoundaryCondition] = useState<BoundaryCondition>('bounded');
   
   const [mounted, setMounted] = useState(false);
   const [actualCellAliveColor, setActualCellAliveColor] = useState('');
@@ -46,10 +48,12 @@ export default function CellularAutomataExplorer() {
   const isRunningRef = useRef(isRunning);
   const speedRef = useRef(speed);
   const gridRef = useRef(grid);
+  const boundaryConditionRef = useRef(boundaryCondition);
 
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   useEffect(() => { speedRef.current = speed; }, [speed]);
   useEffect(() => { gridRef.current = grid; }, [grid]);
+  useEffect(() => { boundaryConditionRef.current = boundaryCondition; }, [boundaryCondition]);
   
   useEffect(() => {
     setMounted(true);
@@ -82,6 +86,7 @@ export default function CellularAutomataExplorer() {
     }
 
     ctx.strokeStyle = actualGridLineColor;
+    ctx.lineWidth = 0.5; // Make lines thinner
     ctx.beginPath();
     for (let i = 0; i <= gridSize.cols; i++) {
       ctx.moveTo(i * CELL_SIZE, 0);
@@ -100,7 +105,7 @@ export default function CellularAutomataExplorer() {
 
   const runSimulationStep = useCallback(() => {
     setGrid(currentGrid => {
-      const nextGrid = getNextGeneration(currentGrid);
+      const nextGrid = getNextGeneration(currentGrid, boundaryConditionRef.current);
       setHistory(prevHistory => {
         const updatedHistory = [...prevHistory, currentGrid];
         return updatedHistory.length > MAX_HISTORY_SIZE 
@@ -109,7 +114,7 @@ export default function CellularAutomataExplorer() {
       });
       return nextGrid;
     });
-  }, []);
+  }, []); // Refs handle current values, so deps can be empty
   
   const simulationLoop = useCallback(() => {
     if (!isRunningRef.current) return;
@@ -133,7 +138,7 @@ export default function CellularAutomataExplorer() {
   }, [isRunning, simulationLoop]);
 
   const handleStart = () => setIsRunning(true);
-  const handlePause = useCallback(() => setIsRunning(false), [setIsRunning]);
+  const handlePause = useCallback(() => setIsRunning(false), []);
 
   const handleStepForward = () => {
     if (isRunning) return;
@@ -156,18 +161,18 @@ export default function CellularAutomataExplorer() {
   const toggleCellAndRecordHistory = useCallback((row: number, col: number) => {
     if (row >= 0 && row < gridSize.rows && col >= 0 && col < gridSize.cols) {
       setHistory(prevHistory => {
-        const updatedHistory = [...prevHistory, gridRef.current]; // gridRef.current is state BEFORE this toggle
+        const updatedHistory = [...prevHistory, gridRef.current];
         return updatedHistory.length > MAX_HISTORY_SIZE 
           ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
           : updatedHistory;
       });
       setGrid(prevGrid => {
-        const newGrid = prevGrid.map(arr => arr.slice()); // Deep copy
+        const newGrid = prevGrid.map(arr => arr.slice());
         newGrid[row][col] = newGrid[row][col] ? 0 : 1;
         return newGrid;
       });
     }
-  }, [gridSize.rows, gridSize.cols, setHistory, setGrid, gridRef]);
+  }, [gridSize.rows, gridSize.cols]);
 
   const handleMouseDown = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
@@ -182,7 +187,7 @@ export default function CellularAutomataExplorer() {
 
     toggleCellAndRecordHistory(row, col);
     lastPaintedCellRef.current = { row, col };
-  }, [handlePause, toggleCellAndRecordHistory, setIsPainting, lastPaintedCellRef]);
+  }, [handlePause, toggleCellAndRecordHistory]);
 
   const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isPainting || !canvasRef.current) return;
@@ -199,29 +204,27 @@ export default function CellularAutomataExplorer() {
     
     toggleCellAndRecordHistory(row, col);
     lastPaintedCellRef.current = { row, col };
-  }, [isPainting, toggleCellAndRecordHistory, lastPaintedCellRef]);
+  }, [isPainting, toggleCellAndRecordHistory]);
 
   const handleMouseUp = useCallback(() => {
     setIsPainting(false);
     lastPaintedCellRef.current = null;
-  }, [setIsPainting, lastPaintedCellRef]);
+  }, []);
 
   const handleMouseLeave = useCallback(() => {
     if (isPainting) {
       setIsPainting(false);
       lastPaintedCellRef.current = null;
     }
-  }, [isPainting, setIsPainting, lastPaintedCellRef]);
+  }, [isPainting]);
   
   const handleGridSizeChange = useCallback((newRows: number, newCols: number) => {
     setGridSize({ rows: newRows, cols: newCols });
-    // handleReset will be called by the useEffect watching gridSize
   }, []);
 
   useEffect(() => {
     handleReset(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gridSize.rows, gridSize.cols]); // handleReset is memoized
+  }, [gridSize.rows, gridSize.cols, handleReset]);
 
 
   if (!mounted) {
@@ -315,6 +318,21 @@ export default function CellularAutomataExplorer() {
                   <span>Slow</span>
                 </div>
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="boundaryType" className="flex items-center"><Globe className="mr-2 h-4 w-4" />Boundary Type</Label>
+                <Select 
+                  value={boundaryCondition} 
+                  onValueChange={(value: BoundaryCondition) => setBoundaryCondition(value)}
+                >
+                  <SelectTrigger id="boundaryType" aria-label="Boundary Type">
+                    <SelectValue placeholder="Select boundary type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bounded">Bounded</SelectItem>
+                    <SelectItem value="circular">Circular (Periodic)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardContent>
           </Card>
           <CardDescription className="text-center text-xs">
@@ -326,5 +344,3 @@ export default function CellularAutomataExplorer() {
     </TooltipProvider>
   );
 }
-
-    

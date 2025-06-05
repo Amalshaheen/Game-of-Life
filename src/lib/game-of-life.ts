@@ -1,5 +1,6 @@
 
 export type Grid = number[][];
+export type BoundaryCondition = 'bounded' | 'circular';
 
 export const createGrid = (rows: number, cols: number, randomize: boolean = false): Grid => {
   const grid: Grid = [];
@@ -7,7 +8,7 @@ export const createGrid = (rows: number, cols: number, randomize: boolean = fals
     grid[i] = [];
     for (let j = 0; j < cols; j++) {
       if (randomize) {
-        grid[i][j] = Math.random() > 0.6 ? 1 : 0; // Increased density for random grids
+        grid[i][j] = Math.random() > 0.5 ? 1 : 0; // Adjusted density
       } else {
         grid[i][j] = 0;
       }
@@ -16,8 +17,8 @@ export const createGrid = (rows: number, cols: number, randomize: boolean = fals
   return grid;
 };
 
-export const getNextGeneration = (grid: Grid): Grid => {
-  if (!grid || grid.length === 0 || grid[0].length === 0) return [[]];
+export const getNextGeneration = (grid: Grid, boundaryCondition: BoundaryCondition = 'bounded'): Grid => {
+  if (!grid || grid.length === 0 || !grid[0] || grid[0].length === 0) return [[]];
   
   const rows = grid.length;
   const cols = grid[0].length;
@@ -30,18 +31,26 @@ export const getNextGeneration = (grid: Grid): Grid => {
         for (let yOffset = -1; yOffset <= 1; yOffset++) {
           if (xOffset === 0 && yOffset === 0) continue;
 
-          const neighborI = i + xOffset;
-          const neighborJ = j + yOffset;
+          let neighborI = i + xOffset;
+          let neighborJ = j + yOffset;
 
-          // Handle boundaries: cells outside the grid are considered dead
-          if (neighborI >= 0 && neighborI < rows && neighborJ >= 0 && neighborJ < cols && grid[neighborI][neighborJ] === 1) {
-            liveNeighbors++;
+          if (boundaryCondition === 'circular') {
+            neighborI = (neighborI + rows) % rows;
+            neighborJ = (neighborJ + cols) % cols;
+            // In circular mode, the neighbor is always "on the grid" after wrapping
+            if (grid[neighborI]?.[neighborJ] === 1) {
+              liveNeighbors++;
+            }
+          } else { // 'bounded' condition
+            if (neighborI >= 0 && neighborI < rows && neighborJ >= 0 && neighborJ < cols && grid[neighborI]?.[neighborJ] === 1) {
+              liveNeighbors++;
+            }
           }
         }
       }
 
       // Apply Conway's Game of Life rules
-      if (grid[i][j] === 1) { // If cell is alive
+      if (grid[i]?.[j] === 1) { // If cell is alive
         if (liveNeighbors < 2 || liveNeighbors > 3) {
           newGrid[i][j] = 0; // Dies by underpopulation or overpopulation
         } else {
@@ -50,6 +59,8 @@ export const getNextGeneration = (grid: Grid): Grid => {
       } else { // If cell is dead
         if (liveNeighbors === 3) {
           newGrid[i][j] = 1; // Becomes alive by reproduction
+        } else {
+          newGrid[i][j] = 0; // Stays dead
         }
       }
     }
