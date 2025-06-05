@@ -2,16 +2,16 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2, Type } from 'lucide-react'; // Added Type icon
+import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2, Type, Save } from 'lucide-react'; // Added Save Icon
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from '@/components/ui/select'; // Added SelectGroup, SelectLabel
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, SEED_PATTERNS, type SeedPattern, renderTextToGrid } from '@/lib/game-of-life'; // Added renderTextToGrid
+import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, PREDEFINED_SEED_PATTERNS, type SeedPattern, renderTextToGrid, extractPatternFromGrid } from '@/lib/game-of-life'; // Updated PREDEFINED_SEED_PATTERNS, added extractPatternFromGrid
 import { useToast } from "@/hooks/use-toast";
 
 
@@ -20,6 +20,7 @@ const DEFAULT_COLS = 60;
 const CELL_SIZE = 12; 
 const DEFAULT_SPEED_MS = 150;
 const MAX_HISTORY_SIZE = 100;
+const CUSTOM_SEEDS_STORAGE_KEY = 'gameOfLifeCustomSeeds';
 
 const CSS_VAR_ACCENT = '--accent';
 const CSS_VAR_MUTED = '--muted';
@@ -35,6 +36,8 @@ export default function CellularAutomataExplorer() {
   const [boundaryCondition, setBoundaryCondition] = useState<BoundaryCondition>('bounded');
   const [selectedSeedName, setSelectedSeedName] = useState<string>('');
   const [textToSeed, setTextToSeed] = useState<string>('');
+  const [customSeedNameInput, setCustomSeedNameInput] = useState<string>('');
+  const [customSeedPatterns, setCustomSeedPatterns] = useState<SeedPattern[]>([]);
   
   const [mounted, setMounted] = useState(false);
   const [actualCellAliveColor, setActualCellAliveColor] = useState('');
@@ -71,8 +74,19 @@ export default function CellularAutomataExplorer() {
       if (accentColorValue) setActualCellAliveColor(`hsl(${accentColorValue})`);
       if (mutedColorValue) setActualCellDeadColor(`hsl(${mutedColorValue})`);
       if (borderColorValue) setActualGridLineColor(`hsla(${borderColorValue}, 0.4)`);
+
+      // Load custom seeds from localStorage
+      try {
+        const storedSeeds = localStorage.getItem(CUSTOM_SEEDS_STORAGE_KEY);
+        if (storedSeeds) {
+          setCustomSeedPatterns(JSON.parse(storedSeeds));
+        }
+      } catch (error) {
+        console.error("Failed to load custom seeds from localStorage:", error);
+        toast({ title: "Error", description: "Could not load custom seeds.", variant: "destructive" });
+      }
     }
-  }, []);
+  }, [toast]);
 
 
   const drawGrid = useCallback(() => {
@@ -236,8 +250,13 @@ export default function CellularAutomataExplorer() {
   const handlePlantSeed = useCallback(() => {
     if (!selectedSeedName) return;
 
-    const seedToPlant = SEED_PATTERNS.find(s => s.name === selectedSeedName);
-    if (!seedToPlant) return;
+    const allSeeds = [...PREDEFINED_SEED_PATTERNS, ...customSeedPatterns];
+    const seedToPlant = allSeeds.find(s => s.name === selectedSeedName);
+
+    if (!seedToPlant) {
+        toast({ title: "Error", description: "Selected seed not found.", variant: "destructive" });
+        return;
+    }
 
     setIsRunning(false); 
     const newGrid = createGrid(gridSize.rows, gridSize.cols, false); 
@@ -266,8 +285,8 @@ export default function CellularAutomataExplorer() {
     }
     setGrid(newGrid);
     setHistory([]); 
-    setTextToSeed(''); // Clear text input
-  }, [selectedSeedName, gridSize.rows, gridSize.cols, toast]);
+    setTextToSeed(''); 
+  }, [selectedSeedName, gridSize.rows, gridSize.cols, toast, customSeedPatterns]);
 
   const handlePlantText = useCallback(() => {
     if (!textToSeed.trim()) {
@@ -283,13 +302,52 @@ export default function CellularAutomataExplorer() {
     }
     setGrid(newGrid);
     setHistory([]);
-    setSelectedSeedName(''); // Clear seed selection
+    setSelectedSeedName(''); 
   }, [textToSeed, gridSize.rows, gridSize.cols, toast]);
+
+  const handleSaveCustomSeed = useCallback(() => {
+    const name = customSeedNameInput.trim();
+    if (!name) {
+      toast({ title: "Error", description: "Please enter a name for your custom pattern.", variant: "destructive" });
+      return;
+    }
+
+    const extractedPattern = extractPatternFromGrid(gridRef.current);
+    if (!extractedPattern || extractedPattern.length === 0 || extractedPattern[0].length === 0) {
+      toast({ title: "Error", description: "Cannot save an empty pattern. Add some live cells.", variant: "destructive" });
+      return;
+    }
+
+    const newCustomSeed: SeedPattern = { name, pattern: extractedPattern, description: "Custom saved pattern" };
+    
+    setCustomSeedPatterns(prevCustomSeeds => {
+      const existingIndex = prevCustomSeeds.findIndex(seed => seed.name === name);
+      let updatedSeeds;
+      if (existingIndex !== -1) {
+        updatedSeeds = [...prevCustomSeeds];
+        updatedSeeds[existingIndex] = newCustomSeed;
+      } else {
+        updatedSeeds = [...prevCustomSeeds, newCustomSeed];
+      }
+      try {
+        localStorage.setItem(CUSTOM_SEEDS_STORAGE_KEY, JSON.stringify(updatedSeeds));
+        toast({ title: "Success", description: `Pattern "${name}" saved successfully!` });
+      } catch (error) {
+         console.error("Failed to save custom seeds to localStorage:", error);
+         toast({ title: "Error", description: "Could not save custom pattern to local storage.", variant: "destructive" });
+      }
+      return updatedSeeds;
+    });
+    setCustomSeedNameInput(''); 
+  }, [customSeedNameInput, toast]);
 
 
   if (!mounted) {
     return <div className="flex justify-center items-center h-full"><p>Loading Styles...</p></div>;
   }
+  
+  const combinedSeedPatterns = [...PREDEFINED_SEED_PATTERNS, ...customSeedPatterns];
+
 
   return (
     <TooltipProvider>
@@ -401,7 +459,7 @@ export default function CellularAutomataExplorer() {
           <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center"><PackageIcon className="mr-2 h-5 w-5" />Seed Structures</CardTitle>
-              <CardDescription>Start with a predefined pattern.</CardDescription>
+              <CardDescription>Start with a predefined or custom pattern.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -410,27 +468,54 @@ export default function CellularAutomataExplorer() {
                   value={selectedSeedName} 
                   onValueChange={(value) => {
                     setSelectedSeedName(value || '');
-                    if(value) setTextToSeed(''); // Clear text input if seed selected
+                    if(value) setTextToSeed(''); 
                   }}
                 >
                   <SelectTrigger id="seedSelector" aria-label="Select Seed Structure">
                     <SelectValue placeholder="Select a structure..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {SEED_PATTERNS.map(seed => (
-                      <SelectItem key={seed.name} value={seed.name} title={seed.description}>
-                         <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span>{seed.name}</span>
-                          </TooltipTrigger>
-                          {seed.description && (
-                            <TooltipContent side="right" align="start">
-                              <p>{seed.description}</p>
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                      </SelectItem>
-                    ))}
+                    {PREDEFINED_SEED_PATTERNS.length > 0 && (
+                        <SelectGroup>
+                            <SelectLabel>Predefined</SelectLabel>
+                            {PREDEFINED_SEED_PATTERNS.map(seed => (
+                            <SelectItem key={`predefined-${seed.name}`} value={seed.name} title={seed.description}>
+                                <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span>{seed.name}</span>
+                                </TooltipTrigger>
+                                {seed.description && (
+                                    <TooltipContent side="right" align="start">
+                                    <p>{seed.description}</p>
+                                    </TooltipContent>
+                                )}
+                                </Tooltip>
+                            </SelectItem>
+                            ))}
+                        </SelectGroup>
+                    )}
+                    {customSeedPatterns.length > 0 && (
+                        <SelectGroup>
+                            <SelectLabel>Custom</SelectLabel>
+                            {customSeedPatterns.map(seed => (
+                            <SelectItem key={`custom-${seed.name}`} value={seed.name} title={seed.description || `Custom pattern: ${seed.name}`}>
+                                 <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <span>{seed.name}</span>
+                                </TooltipTrigger>
+                                {(seed.description || `Custom pattern: ${seed.name}`) && (
+                                    <TooltipContent side="right" align="start">
+                                    <p>{seed.description || `Custom pattern: ${seed.name}`}</p>
+                                    </TooltipContent>
+                                )}
+                                </Tooltip>
+                            </SelectItem>
+                            ))}
+                        </SelectGroup>
+                    )}
+                    {PREDEFINED_SEED_PATTERNS.length === 0 && customSeedPatterns.length === 0 && (
+                        <SelectItem value="none_available" disabled>No patterns available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -457,9 +542,9 @@ export default function CellularAutomataExplorer() {
                   value={textToSeed}
                   onChange={(e) => {
                      setTextToSeed(e.target.value);
-                     if(e.target.value) setSelectedSeedName(''); // Clear seed selection if text entered
+                     if(e.target.value) setSelectedSeedName(''); 
                   }}
-                  maxLength={20} // Prevent overly long strings
+                  maxLength={20} 
                 />
               </div>
               <Button onClick={handlePlantText} disabled={!textToSeed.trim()} className="w-full">
@@ -468,6 +553,30 @@ export default function CellularAutomataExplorer() {
             </CardContent>
           </Card>
 
+          <Separator />
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+                <CardTitle className="flex items-center"><Save className="mr-2 h-5 w-5" />Save Current Pattern</CardTitle>
+                <CardDescription>Save the current grid as a new custom seed.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="customSeedName">Pattern Name</Label>
+                    <Input 
+                        id="customSeedName" 
+                        type="text" 
+                        placeholder="My Awesome Pattern" 
+                        value={customSeedNameInput}
+                        onChange={(e) => setCustomSeedNameInput(e.target.value)}
+                        maxLength={50}
+                    />
+                </div>
+                <Button onClick={handleSaveCustomSeed} disabled={!customSeedNameInput.trim()} className="w-full">
+                    Save Pattern
+                </Button>
+            </CardContent>
+          </Card>
 
           <CardDescription className="text-center text-xs">
             Click and drag on cells to toggle their state. Use controls to manage the simulation.

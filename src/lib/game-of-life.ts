@@ -8,7 +8,8 @@ export interface SeedPattern {
   description?: string;
 }
 
-export const SEED_PATTERNS: SeedPattern[] = [
+// Renamed to PREDEFINED_SEED_PATTERNS to distinguish from custom seeds
+export const PREDEFINED_SEED_PATTERNS: SeedPattern[] = [
   {
     name: "Glider",
     pattern: [
@@ -246,7 +247,7 @@ export const CHARACTER_PATTERNS: Record<string, number[][]> = {
     [1,0,0,0],
     [1,1,1,1],
   ],
-  ' ': [ // Space character
+  ' ': [ 
     [0,0],
     [0,0],
     [0,0],
@@ -255,7 +256,7 @@ export const CHARACTER_PATTERNS: Record<string, number[][]> = {
   ]
 };
 const DEFAULT_CHAR_HEIGHT = 5;
-const CHAR_SPACING = 1; // Number of empty columns between characters
+const CHAR_SPACING = 1; 
 
 
 export const createGrid = (rows: number, cols: number, randomize: boolean = false): Grid => {
@@ -264,7 +265,7 @@ export const createGrid = (rows: number, cols: number, randomize: boolean = fals
     grid[i] = [];
     for (let j = 0; j < cols; j++) {
       if (randomize) {
-        grid[i][j] = Math.random() > 0.85 ? 1 : 0; 
+        grid[i][j] = Math.random() > 0.75 ? 1 : 0; 
       } else {
         grid[i][j] = 0;
       }
@@ -337,8 +338,6 @@ export const renderTextToGrid = (
       charPatternsToRender.push(pattern);
       totalWidth += (pattern[0]?.length || 0) + CHAR_SPACING;
     } else {
-      // Potentially handle unknown characters, e.g., skip or use a placeholder
-      // For now, we'll use a space if char not found
       const spacePattern = CHARACTER_PATTERNS[' '];
       if (spacePattern) {
          charPatternsToRender.push(spacePattern);
@@ -346,10 +345,10 @@ export const renderTextToGrid = (
       }
     }
   }
-  if (totalWidth > 0) totalWidth -= CHAR_SPACING; // Remove last spacing
+  if (totalWidth > 0) totalWidth -= CHAR_SPACING; 
 
   if (totalWidth === 0) {
-    return { grid: createGrid(gridRows, gridCols, false) }; // Return empty grid if no text
+    return { grid: createGrid(gridRows, gridCols, false) }; 
   }
 
   if (totalWidth > gridCols || DEFAULT_CHAR_HEIGHT > gridRows) {
@@ -379,4 +378,44 @@ export const renderTextToGrid = (
   }
 
   return { grid: newGrid };
+};
+
+export const extractPatternFromGrid = (grid: Grid): Grid | null => {
+  if (!grid || grid.length === 0 || !grid[0] || grid[0].length === 0) {
+    return null;
+  }
+
+  let minRow = grid.length;
+  let maxRow = -1;
+  let minCol = grid[0].length;
+  let maxCol = -1;
+  let hasLiveCells = false;
+
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < grid[r].length; c++) {
+      if (grid[r][c] === 1) {
+        hasLiveCells = true;
+        minRow = Math.min(minRow, r);
+        maxRow = Math.max(maxRow, r);
+        minCol = Math.min(minCol, c);
+        maxCol = Math.max(maxCol, c);
+      }
+    }
+  }
+
+  if (!hasLiveCells) {
+    return null; // Return null if no live cells are found
+  }
+
+  const patternHeight = maxRow - minRow + 1;
+  const patternWidth = maxCol - minCol + 1;
+  const extractedPattern: Grid = [];
+
+  for (let r = 0; r < patternHeight; r++) {
+    extractedPattern[r] = [];
+    for (let c = 0; c < patternWidth; c++) {
+      extractedPattern[r][c] = grid[minRow + r][minCol + c];
+    }
+  }
+  return extractedPattern;
 };
