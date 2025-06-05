@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"; // Added for potential future use, not strictly required now.
 
 export const metadata: Metadata = {
-  title: 'Cellular Automata Explorer',
+  title: 'Game of Life',
   description: 'Explore Conway\'s Game of Life and other cellular automata.',
 };
 
