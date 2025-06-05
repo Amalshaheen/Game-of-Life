@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe } from 'lucide-react';
+import { Play, Pause, SkipForward, RefreshCw, SkipBack, Settings2, Zap, Rows, ColumnsIcon, Globe, PackageIcon, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,15 +11,14 @@ import { Slider } from '@/components/ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { type Grid, createGrid, getNextGeneration, type BoundaryCondition } from '@/lib/game-of-life';
+import { type Grid, createGrid, getNextGeneration, type BoundaryCondition, SEED_PATTERNS, type SeedPattern } from '@/lib/game-of-life';
 
 const DEFAULT_ROWS = 40;
 const DEFAULT_COLS = 60;
-const CELL_SIZE = 12; // px
+const CELL_SIZE = 12; 
 const DEFAULT_SPEED_MS = 150;
 const MAX_HISTORY_SIZE = 100;
 
-// CSS variable names (without hsl() wrapper)
 const CSS_VAR_ACCENT = '--accent';
 const CSS_VAR_MUTED = '--muted';
 const CSS_VAR_BORDER = '--border';
@@ -32,6 +31,7 @@ export default function CellularAutomataExplorer() {
   const [speed, setSpeed] = useState(DEFAULT_SPEED_MS);
   const [history, setHistory] = useState<Grid[]>([]);
   const [boundaryCondition, setBoundaryCondition] = useState<BoundaryCondition>('bounded');
+  const [selectedSeedName, setSelectedSeedName] = useState<string>('');
   
   const [mounted, setMounted] = useState(false);
   const [actualCellAliveColor, setActualCellAliveColor] = useState('');
@@ -47,7 +47,7 @@ export default function CellularAutomataExplorer() {
 
   const isRunningRef = useRef(isRunning);
   const speedRef = useRef(speed);
-  const gridRef = useRef(grid);
+  const gridRef = useRef(grid); // Keep this for read-only access in callbacks if needed
   const boundaryConditionRef = useRef(boundaryCondition);
 
   useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
@@ -86,7 +86,7 @@ export default function CellularAutomataExplorer() {
     }
 
     ctx.strokeStyle = actualGridLineColor;
-    ctx.lineWidth = 0.5; // Make lines thinner
+    ctx.lineWidth = 0.5;
     ctx.beginPath();
     for (let i = 0; i <= gridSize.cols; i++) {
       ctx.moveTo(i * CELL_SIZE, 0);
@@ -104,17 +104,17 @@ export default function CellularAutomataExplorer() {
   }, [drawGrid]);
 
   const runSimulationStep = useCallback(() => {
-    setGrid(currentGrid => {
+    setGrid(currentGrid => { // currentGrid is the latest state
       const nextGrid = getNextGeneration(currentGrid, boundaryConditionRef.current);
       setHistory(prevHistory => {
-        const updatedHistory = [...prevHistory, currentGrid];
+        const updatedHistory = [...prevHistory, currentGrid]; // currentGrid is correct here
         return updatedHistory.length > MAX_HISTORY_SIZE 
           ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
           : updatedHistory;
       });
       return nextGrid;
     });
-  }, []); // Refs handle current values, so deps can be empty
+  }, []); 
   
   const simulationLoop = useCallback(() => {
     if (!isRunningRef.current) return;
@@ -144,11 +144,12 @@ export default function CellularAutomataExplorer() {
     if (isRunning) return;
     runSimulationStep();
   };
-
+  
   const handleReset = useCallback((randomize = true) => {
     setIsRunning(false);
     setGrid(createGrid(gridSize.rows, gridSize.cols, randomize));
     setHistory([]);
+    setSelectedSeedName(''); // Clear selected seed on reset
   }, [gridSize.rows, gridSize.cols]);
   
   const handleStepBackward = () => {
@@ -161,7 +162,8 @@ export default function CellularAutomataExplorer() {
   const toggleCellAndRecordHistory = useCallback((row: number, col: number) => {
     if (row >= 0 && row < gridSize.rows && col >= 0 && col < gridSize.cols) {
       setHistory(prevHistory => {
-        const updatedHistory = [...prevHistory, gridRef.current];
+        // Use gridRef.current to ensure the history captures the state *before* the toggle
+        const updatedHistory = [...prevHistory, gridRef.current]; 
         return updatedHistory.length > MAX_HISTORY_SIZE 
           ? updatedHistory.slice(updatedHistory.length - MAX_HISTORY_SIZE) 
           : updatedHistory;
@@ -223,8 +225,45 @@ export default function CellularAutomataExplorer() {
   }, []);
 
   useEffect(() => {
-    handleReset(true);
+    handleReset(true); // Default to random reset when size changes
   }, [gridSize.rows, gridSize.cols, handleReset]);
+
+  const handlePlantSeed = useCallback(() => {
+    if (!selectedSeedName) return;
+
+    const seedToPlant = SEED_PATTERNS.find(s => s.name === selectedSeedName);
+    if (!seedToPlant) return;
+
+    setIsRunning(false); 
+
+    const newGrid = createGrid(gridSize.rows, gridSize.cols, false); 
+
+    const patternRows = seedToPlant.pattern.length;
+    const patternCols = seedToPlant.pattern[0]?.length || 0;
+
+    if (patternRows === 0 || patternCols === 0) return;
+    if (patternRows > gridSize.rows || patternCols > gridSize.cols) {
+        alert("Seed pattern is too large for the current grid size.");
+        return;
+    }
+    
+    const startRow = Math.floor((gridSize.rows - patternRows) / 2);
+    const startCol = Math.floor((gridSize.cols - patternCols) / 2);
+
+    for (let i = 0; i < patternRows; i++) {
+        for (let j = 0; j < patternCols; j++) {
+            if (seedToPlant.pattern[i][j] === 1) {
+                const gridRow = startRow + i;
+                const gridCol = startCol + j;
+                if (gridRow >= 0 && gridRow < gridSize.rows && gridCol >= 0 && gridCol < gridSize.cols) {
+                    newGrid[gridRow][gridCol] = 1;
+                }
+            }
+        }
+    }
+    setGrid(newGrid);
+    setHistory([]); 
+  }, [selectedSeedName, gridSize.rows, gridSize.cols, setIsRunning, setGrid, setHistory]);
 
 
   if (!mounted) {
@@ -271,7 +310,7 @@ export default function CellularAutomataExplorer() {
                 <RefreshCw className="mr-2 h-4 w-4" /> Random Reset
               </Button>
                <Button onClick={() => handleReset(false)} variant="outline" className="col-span-2 w-full">
-                <RefreshCw className="mr-2 h-4 w-4" /> Clear Grid
+                <Wand2 className="mr-2 h-4 w-4" /> Clear Grid
               </Button>
             </CardContent>
           </Card>
@@ -335,6 +374,48 @@ export default function CellularAutomataExplorer() {
               </div>
             </CardContent>
           </Card>
+
+          <Separator />
+          
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle className="flex items-center"><PackageIcon className="mr-2 h-5 w-5" />Seed Structures</CardTitle>
+              <CardDescription>Start with a predefined pattern.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="seedSelector">Select Seed</Label>
+                <Select 
+                  value={selectedSeedName} 
+                  onValueChange={(value) => setSelectedSeedName(value || '')}
+                >
+                  <SelectTrigger id="seedSelector" aria-label="Select Seed Structure">
+                    <SelectValue placeholder="Select a structure..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SEED_PATTERNS.map(seed => (
+                      <SelectItem key={seed.name} value={seed.name} title={seed.description}>
+                         <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>{seed.name}</span>
+                          </TooltipTrigger>
+                          {seed.description && (
+                            <TooltipContent side="right" align="start">
+                              <p>{seed.description}</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handlePlantSeed} disabled={!selectedSeedName} className="w-full">
+                Plant Selected Seed
+              </Button>
+            </CardContent>
+          </Card>
+
           <CardDescription className="text-center text-xs">
             Click and drag on cells to toggle their state. Use controls to manage the simulation.
             Max history: {MAX_HISTORY_SIZE} steps.

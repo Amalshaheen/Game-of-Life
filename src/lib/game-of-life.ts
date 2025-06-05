@@ -2,13 +2,73 @@
 export type Grid = number[][];
 export type BoundaryCondition = 'bounded' | 'circular';
 
+export interface SeedPattern {
+  name: string;
+  pattern: number[][];
+  description?: string;
+}
+
+export const SEED_PATTERNS: SeedPattern[] = [
+  {
+    name: "Glider",
+    pattern: [
+      [0, 1, 0],
+      [0, 0, 1],
+      [1, 1, 1],
+    ],
+    description: "A simple spaceship that travels diagonally."
+  },
+  {
+    name: "Blinker",
+    pattern: [[1, 1, 1]],
+    description: "A period 2 oscillator."
+  },
+  {
+    name: "Toad",
+    pattern: [
+      [0, 1, 1, 1],
+      [1, 1, 1, 0],
+    ],
+    description: "A period 2 oscillator."
+  },
+  {
+    name: "Beacon",
+    pattern: [
+      [1, 1, 0, 0],
+      [1, 1, 0, 0],
+      [0, 0, 1, 1],
+      [0, 0, 1, 1],
+    ],
+    description: "A period 2 oscillator."
+  },
+  {
+    name: "LWSS (Light-Weight Spaceship)",
+    pattern: [
+      [0, 1, 0, 0, 1],
+      [1, 0, 0, 0, 0],
+      [1, 0, 0, 0, 1],
+      [1, 1, 1, 1, 0],
+    ],
+    description: "A common spaceship, moves horizontally."
+  },
+  {
+    name: "R-Pentomino",
+    pattern: [
+        [0, 1, 1],
+        [1, 1, 0],
+        [0, 1, 0]
+    ],
+    description: "A small methuselah that evolves for many generations."
+  }
+];
+
 export const createGrid = (rows: number, cols: number, randomize: boolean = false): Grid => {
   const grid: Grid = [];
   for (let i = 0; i < rows; i++) {
     grid[i] = [];
     for (let j = 0; j < cols; j++) {
       if (randomize) {
-        grid[i][j] = Math.random() > 0.5 ? 1 : 0; // Adjusted density
+        grid[i][j] = Math.random() > 0.7 ? 1 : 0; 
       } else {
         grid[i][j] = 0;
       }
@@ -22,7 +82,7 @@ export const getNextGeneration = (grid: Grid, boundaryCondition: BoundaryConditi
   
   const rows = grid.length;
   const cols = grid[0].length;
-  const newGrid = createGrid(rows, cols, false); // Initialize with all 0s
+  const newGrid = createGrid(rows, cols, false); 
 
   for (let i = 0; i < rows; i++) {
     for (let j = 0; j < cols; j++) {
@@ -37,11 +97,10 @@ export const getNextGeneration = (grid: Grid, boundaryCondition: BoundaryConditi
           if (boundaryCondition === 'circular') {
             neighborI = (neighborI + rows) % rows;
             neighborJ = (neighborJ + cols) % cols;
-            // In circular mode, the neighbor is always "on the grid" after wrapping
             if (grid[neighborI]?.[neighborJ] === 1) {
               liveNeighbors++;
             }
-          } else { // 'bounded' condition
+          } else { 
             if (neighborI >= 0 && neighborI < rows && neighborJ >= 0 && neighborJ < cols && grid[neighborI]?.[neighborJ] === 1) {
               liveNeighbors++;
             }
@@ -49,18 +108,17 @@ export const getNextGeneration = (grid: Grid, boundaryCondition: BoundaryConditi
         }
       }
 
-      // Apply Conway's Game of Life rules
-      if (grid[i]?.[j] === 1) { // If cell is alive
+      if (grid[i]?.[j] === 1) { 
         if (liveNeighbors < 2 || liveNeighbors > 3) {
-          newGrid[i][j] = 0; // Dies by underpopulation or overpopulation
+          newGrid[i][j] = 0; 
         } else {
-          newGrid[i][j] = 1; // Survives
+          newGrid[i][j] = 1; 
         }
-      } else { // If cell is dead
+      } else { 
         if (liveNeighbors === 3) {
-          newGrid[i][j] = 1; // Becomes alive by reproduction
+          newGrid[i][j] = 1; 
         } else {
-          newGrid[i][j] = 0; // Stays dead
+          newGrid[i][j] = 0; 
         }
       }
     }
